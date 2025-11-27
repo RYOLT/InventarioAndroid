@@ -70,4 +70,10 @@ public class Categoria {
     public String toString() {
         return nombreCategoria; // Para mostrar en Spinners
     }
+
+    public void setId(int i) {
+    }
+
+    public void setNombre(String nombre) {
+    }
 }

@@ -209,6 +209,15 @@
 
     </androidx.core.widget.NestedScrollView>
 
+    <!-- ProgressBar para cargas -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:visibility="gone"
+        android:indeterminate="true" />
+
     <!-- Botón Flotante para Agregar -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fabAgregarProducto"

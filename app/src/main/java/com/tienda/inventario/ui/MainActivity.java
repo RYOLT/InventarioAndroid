@@ -6,6 +6,7 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -13,7 +14,6 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.google.firebase.Firebase;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.tienda.inventario.R;
 import com.tienda.inventario.database.FirestoreManager;
@@ -22,12 +22,10 @@ import com.tienda.inventario.databinding.ActivityMainBinding;
 import com.tienda.inventario.ui.adapter.FormProductoActivity;
 import com.tienda.inventario.ui.adapter.ProductoAdapter;
 import com.tienda.inventario.viewmodel.ProductoViewModel;
-import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.QueryDocumentSnapshot;
+
 
 import java.util.ArrayList;
 import java.util.List;
-
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
@@ -36,6 +34,7 @@ public class MainActivity extends AppCompatActivity {
     private ActivityMainBinding binding;
     private ProductoViewModel viewModel;
     private ProductoAdapter adapter;
+    private List<Producto> listaProductos = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,9 +42,8 @@ public class MainActivity extends AppCompatActivity {
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        //Iniciar Firebase
-        FirebaseFirestore db = FirebaseFirestore.getInstance();
-        cargarProductos();
+        // Inicializar Firestore Manager
+        firestoreManager = FirestoreManager.getInstance();
 
         // Configurar Toolbar
         setSupportActionBar(binding.toolbar);
@@ -56,16 +54,15 @@ public class MainActivity extends AppCompatActivity {
         // Configurar RecyclerView
         setupRecyclerView();
 
-        // Observar datos
+        // Observar datos desde Room (base de datos local)
         observeData();
 
         // Configurar listeners
         setupListeners();
-        
-        
+
+        // Cargar productos desde Firestore
+        cargarProductosFirestore();
     }
-
-
 
     private void setupRecyclerView() {
         adapter = new ProductoAdapter();
@@ -77,7 +74,6 @@ public class MainActivity extends AppCompatActivity {
         adapter.setOnProductoClickListener(new ProductoAdapter.OnProductoClickListener() {
             @Override
             public void onProductoClick(Producto producto) {
-                // TODO: Abrir actividad de detalles/edición
                 mostrarDetallesProducto(producto);
             }
 
@@ -89,7 +85,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void observeData() {
-        // Observar lista de productos
+        // Observar lista de productos desde Room
         viewModel.getAllProductos().observe(this, productos -> {
             if (productos != null) {
                 adapter.setProductos(productos);
@@ -143,7 +139,8 @@ public class MainActivity extends AppCompatActivity {
             startActivity(intent);
         });
 
-        // Búsqueda en tiempo real (opcional)
+
+        // Búsqueda en tiempo real
         binding.etBuscar.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -211,6 +208,7 @@ public class MainActivity extends AppCompatActivity {
                     Intent intent = new Intent(MainActivity.this, FormProductoActivity.class);
                     intent.putExtra("PRODUCTO_ID", producto.getIdProducto());
                     startActivity(intent);
+
                 })
                 .show();
     }
@@ -222,18 +220,18 @@ public class MainActivity extends AppCompatActivity {
                 .setTitle(producto.getNombreProducto())
                 .setItems(opciones, (dialog, which) -> {
                     switch (which) {
-                        case 0: // Ver detalles
+                        case 0:
                             mostrarDetallesProducto(producto);
                             break;
-                        case 1: // Editar
+                        case 1:
                             Intent intent = new Intent(MainActivity.this, FormProductoActivity.class);
                             intent.putExtra("PRODUCTO_ID", producto.getIdProducto());
                             startActivity(intent);
                             break;
-                        case 2: // Actualizar stock
+                        case 2:
                             mostrarDialogoActualizarStock(producto);
                             break;
-                        case 3: // Eliminar
+                        case 3:
                             confirmarEliminarProducto(producto);
                             break;
                     }
@@ -242,7 +240,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void mostrarDialogoActualizarStock(Producto producto) {
-        // Crear layout personalizado para el diálogo
         final android.widget.EditText input = new android.widget.EditText(this);
         input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         input.setHint("Nuevo stock");
@@ -303,6 +300,7 @@ public class MainActivity extends AppCompatActivity {
                     adapter.setProductos(productos);
                 }
             });
+            cargarProductosFirestore();
             Toast.makeText(this, "Lista actualizada", Toast.LENGTH_SHORT).show();
             return true;
         }
@@ -310,17 +308,22 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    private void cargarProductos() {
-        // Mostrar progress bar si lo tienes
+    private void cargarProductosFirestore() {
         binding.progressBar.setVisibility(View.VISIBLE);
 
         firestoreManager.getProductos(new FirestoreManager.OnProductosListener() {
             @Override
             public void onSuccess(List<Producto> productos) {
                 binding.progressBar.setVisibility(View.GONE);
-                listaProductos.clear();
-                listaProductos.addAll(productos);
-                adapter.notifyDataSetChanged();
+
+                // Guardar productos de Firestore en Room
+                for (Producto producto : productos) {
+                    viewModel.insert(producto);
+                }
+
+                Toast.makeText(MainActivity.this,
+                        "Sincronizado: " + productos.size() + " productos",
+                        Toast.LENGTH_SHORT).show();
             }
 
             @Override
@@ -334,7 +337,11 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        cargarProductos(); // Recargar cuando vuelvas de FormProductoActivity
+        // Recargar productos cuando volvemos a la actividad
+        viewModel.getAllProductos().observe(this, productos -> {
+            if (productos != null) {
+                adapter.setProductos(productos);
+            }
+        });
     }
-
 }

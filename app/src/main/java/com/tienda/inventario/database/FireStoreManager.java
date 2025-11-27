@@ -6,6 +6,7 @@ import com.tienda.inventario.database.entities.Categoria;
 import com.tienda.inventario.database.entities.Producto;
 import com.tienda.inventario.database.entities.Proveedor;
 
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -17,7 +18,11 @@ public class FirestoreManager {
     private final FirebaseFirestore db;
 
     private FirestoreManager() {
-        db = FirebaseFirestore.getInstance();
+        this.db = FirebaseFirestore.getInstance();
+    }
+
+    public FirestoreManager() {
+        this.db = db;
     }
 
     public static synchronized FirestoreManager getInstance() {
@@ -109,14 +114,17 @@ public class FirestoreManager {
                 .addOnSuccessListener(queryDocumentSnapshots -> {
                     List<Categoria> categorias = new ArrayList<>();
                     for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
-                        Categoria categoria = new Categoria();
-                        categoria.setId(Integer.parseInt(doc.getId()));
-                        categoria.setNombre(doc.getString("nombre"));
+                        Categoria categoria = doc.toObject(Categoria.class);
+                        categoria.setId(getId());
                         categorias.add(categoria);
                     }
                     listener.onSuccess(categorias);
                 })
                 .addOnFailureListener(e -> listener.onError(e.getMessage()));
+    }
+
+    private int getId() {
+        return 0;
     }
 
     // ==================== PROVEEDORES ====================
@@ -132,9 +140,8 @@ public class FirestoreManager {
                 .addOnSuccessListener(queryDocumentSnapshots -> {
                     List<Proveedor> proveedores = new ArrayList<>();
                     for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
-                        Proveedor proveedor = new Proveedor();
-                        proveedor.setId(Integer.parseInt(doc.getId()));
-                        proveedor.setNombre(doc.getString("nombre"));
+                        Proveedor proveedor = doc.toObject(Proveedor.class);
+                        proveedor.setId(doc.getId());
                         proveedores.add(proveedor);
                     }
                     listener.onSuccess(proveedores);

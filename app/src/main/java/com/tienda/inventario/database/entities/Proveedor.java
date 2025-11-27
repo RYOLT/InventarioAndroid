@@ -111,4 +111,10 @@ public class Proveedor {
     public String toString() {
         return nombreProveedor; // Para mostrar en Spinners
     }
+
+    public void setId(String i) {
+    }
+
+    public void setNombre(String nombre) {
+    }
 }

@@ -98,10 +98,10 @@ public class ProductoAdapter extends RecyclerView.Adapter<ProductoAdapter.Produc
                     .document(documentId)
                     .update(updates)
                     .addOnSuccessListener(aVoid -> {
-                        Toast.makeText(this, "Producto actualizado", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(holder.itemView.getContext(), "Producto actualizado", Toast.LENGTH_SHORT).show();
                     })
                     .addOnFailureListener(e -> {
-                        Toast.makeText(this, "Error al actualizar", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(holder.itemView.getContext(), "Error al actualizar", Toast.LENGTH_SHORT).show();
                     });
         }
 

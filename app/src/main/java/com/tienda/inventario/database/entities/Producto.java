@@ -28,8 +28,6 @@ import androidx.room.PrimaryKey;
         })
 public class Producto {
 
-
-
     @PrimaryKey(autoGenerate = true)
     @ColumnInfo(name = "id_producto")
     private int idProducto;
@@ -65,7 +63,7 @@ public class Producto {
 
     private boolean activo;
 
-    // Constructor vacío (requerido por Room)
+    // Constructor vacío (requerido por Room y Firestore)
     public Producto() {
         this.activo = true;
         this.fechaRegistro = System.currentTimeMillis();
@@ -169,8 +167,51 @@ public class Producto {
         this.activo = activo;
     }
 
+    // Getters/Setters alternativos para Firestore compatibility
+    public String getNombre() {
+        return nombreProducto;
+    }
+
+    public void setNombre(String nombre) {
+        this.nombreProducto = nombre;
+    }
+
+    public double getPrecio() {
+        return precioUnitario;
+    }
+
+    public void setPrecio(double precio) {
+        this.precioUnitario = precio;
+    }
+
+    public int getStock() {
+        return stockActual;
+    }
+
+    public void setStock(int stock) {
+        this.stockActual = stock;
+    }
+
+    public int getStockMin() {
+        return stockMinimo;
+    }
+
+    public void setStockMin(int stockMin) {
+        this.stockMinimo = stockMin;
+    }
+
     // Método útil para verificar stock bajo
     public boolean isBajoStock() {
         return stockActual <= stockMinimo;
     }
+
+    // --- Compatibilidad con Firestore (id genérico) ---
+    public int getId() {
+        return idProducto;
+    }
+
+    public void setId(int id) {
+        this.idProducto = id;
+    }
+
 }
