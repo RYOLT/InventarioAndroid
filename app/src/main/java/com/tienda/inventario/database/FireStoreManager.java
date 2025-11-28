@@ -6,7 +6,6 @@ import com.tienda.inventario.database.entities.Categoria;
 import com.tienda.inventario.database.entities.Producto;
 import com.tienda.inventario.database.entities.Proveedor;
 
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -21,10 +20,6 @@ public class FirestoreManager {
         this.db = FirebaseFirestore.getInstance();
     }
 
-    public FirestoreManager() {
-        this.db = db;
-    }
-
     public static synchronized FirestoreManager getInstance() {
         if (instance == null) {
             instance = new FirestoreManager();
@@ -36,6 +31,7 @@ public class FirestoreManager {
 
     public interface OnProductosListener {
         void onSuccess(List<Producto> productos);
+
         void onError(String error);
     }
 
@@ -45,16 +41,58 @@ public class FirestoreManager {
                 .addOnSuccessListener(queryDocumentSnapshots -> {
                     List<Producto> productos = new ArrayList<>();
                     for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
-                        Producto producto = new Producto();
-                        producto.setId(Integer.parseInt(doc.getId()));
-                        producto.setNombre(doc.getString("nombre"));
-                        producto.setDescripcion(doc.getString("descripcion"));
-                        producto.setPrecio(doc.getDouble("precio"));
-                        producto.setStock(doc.getLong("stock").intValue());
-                        producto.setStockMinimo(doc.getLong("stockMin").intValue());
-                        producto.setCodigoBarras(doc.getString("codigoBarras"));
+                        try {
+                            Producto producto = new Producto();
 
-                        productos.add(producto);
+                            producto.setIdProducto(doc.getId().hashCode());
+                            producto.setNombreProducto(doc.getString("nombre"));
+                            producto.setDescripcion(doc.getString("descripcion"));
+
+                            Object precioObj = doc.get("precio");
+                            if (precioObj instanceof Double) {
+                                producto.setPrecioUnitario((Double) precioObj);
+                            } else if (precioObj instanceof Long) {
+                                producto.setPrecioUnitario(((Long) precioObj).doubleValue());
+                            }
+
+                            Object stockObj = doc.get("stock");
+                            if (stockObj instanceof Long) {
+                                producto.setStockActual(((Long) stockObj).intValue());
+                            } else if (stockObj instanceof Double) {
+                                producto.setStockActual(((Double) stockObj).intValue());
+                            }
+
+                            Object stockMinObj = doc.get("stockMin");
+                            if (stockMinObj instanceof Long) {
+                                producto.setStockMinimo(((Long) stockMinObj).intValue());
+                            } else if (stockMinObj instanceof Double) {
+                                producto.setStockMinimo(((Double) stockMinObj).intValue());
+                            }
+
+                            producto.setCodigoBarras(doc.getString("codigoBarras"));
+
+                            Object catIdObj = doc.get("idCategoria");
+                            if (catIdObj instanceof Long) {
+                                producto.setIdCategoria(((Long) catIdObj).intValue());
+                            } else if (catIdObj instanceof Double) {
+                                producto.setIdCategoria(((Double) catIdObj).intValue());
+                            } else {
+                                producto.setIdCategoria(1);
+                            }
+
+                            Object provIdObj = doc.get("idProveedor");
+                            if (provIdObj instanceof Long) {
+                                producto.setIdProveedor(((Long) provIdObj).intValue());
+                            } else if (provIdObj instanceof Double) {
+                                producto.setIdProveedor(((Double) provIdObj).intValue());
+                            } else {
+                                producto.setIdProveedor(1);
+                            }
+
+                            productos.add(producto);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
                     }
                     listener.onSuccess(productos);
                 })
@@ -63,12 +101,14 @@ public class FirestoreManager {
 
     public void agregarProducto(Producto producto, OnSuccessListener listener) {
         Map<String, Object> data = new HashMap<>();
-        data.put("nombre", producto.getNombre());
+        data.put("nombre", producto.getNombreProducto());
         data.put("descripcion", producto.getDescripcion());
-        data.put("precio", producto.getPrecio());
-        data.put("stock", producto.getStock());
+        data.put("precio", producto.getPrecioUnitario());
+        data.put("stock", producto.getStockActual());
         data.put("stockMin", producto.getStockMinimo());
         data.put("codigoBarras", producto.getCodigoBarras());
+        data.put("idCategoria", producto.getIdCategoria());
+        data.put("idProveedor", producto.getIdProveedor());
         data.put("timestamp", System.currentTimeMillis());
 
         db.collection("productos")
@@ -79,12 +119,14 @@ public class FirestoreManager {
 
     public void actualizarProducto(String documentId, Producto producto, OnSuccessListener listener) {
         Map<String, Object> data = new HashMap<>();
-        data.put("nombre", producto.getNombre());
+        data.put("nombre", producto.getNombreProducto());
         data.put("descripcion", producto.getDescripcion());
-        data.put("precio", producto.getPrecio());
-        data.put("stock", producto.getStock());
+        data.put("precio", producto.getPrecioUnitario());
+        data.put("stock", producto.getStockActual());
         data.put("stockMin", producto.getStockMinimo());
         data.put("codigoBarras", producto.getCodigoBarras());
+        data.put("idCategoria", producto.getIdCategoria());
+        data.put("idProveedor", producto.getIdProveedor());
 
         db.collection("productos")
                 .document(documentId)
@@ -105,6 +147,7 @@ public class FirestoreManager {
 
     public interface OnCategoriasListener {
         void onSuccess(List<Categoria> categorias);
+
         void onError(String error);
     }
 
@@ -114,8 +157,10 @@ public class FirestoreManager {
                 .addOnSuccessListener(queryDocumentSnapshots -> {
                     List<Categoria> categorias = new ArrayList<>();
                     for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
-                        Categoria categoria = doc.toObject(Categoria.class);
-                        categoria.setId(getId());
+                        Categoria categoria = new Categoria();
+                        categoria.setIdCategoria(doc.getId().hashCode());
+                        categoria.setNombreCategoria(doc.getString("nombre"));
+                        categoria.setDescripcion(doc.getString("descripcion"));
                         categorias.add(categoria);
                     }
                     listener.onSuccess(categorias);
@@ -123,14 +168,23 @@ public class FirestoreManager {
                 .addOnFailureListener(e -> listener.onError(e.getMessage()));
     }
 
-    private int getId() {
-        return 0;
+    public void agregarCategoria(Categoria categoria, OnSuccessListener listener) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("nombre", categoria.getNombreCategoria());
+        data.put("descripcion", categoria.getDescripcion());
+        data.put("timestamp", System.currentTimeMillis());
+
+        db.collection("categorias")
+                .add(data)
+                .addOnSuccessListener(documentReference -> listener.onSuccess())
+                .addOnFailureListener(e -> listener.onError(e.getMessage()));
     }
 
     // ==================== PROVEEDORES ====================
 
     public interface OnProveedoresListener {
         void onSuccess(List<Proveedor> proveedores);
+
         void onError(String error);
     }
 
@@ -140,8 +194,14 @@ public class FirestoreManager {
                 .addOnSuccessListener(queryDocumentSnapshots -> {
                     List<Proveedor> proveedores = new ArrayList<>();
                     for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
-                        Proveedor proveedor = doc.toObject(Proveedor.class);
-                        proveedor.setId(doc.getId());
+                        Proveedor proveedor = new Proveedor();
+                        proveedor.setIdProveedor(doc.getId().hashCode());
+                        proveedor.setNombreProveedor(doc.getString("nombre"));
+                        proveedor.setTelefono(doc.getString("telefono"));
+                        proveedor.setEmail(doc.getString("email"));
+                        proveedor.setDireccion(doc.getString("direccion"));
+                        proveedor.setCiudad(doc.getString("ciudad"));
+                        proveedor.setPais(doc.getString("pais"));
                         proveedores.add(proveedor);
                     }
                     listener.onSuccess(proveedores);
@@ -149,10 +209,27 @@ public class FirestoreManager {
                 .addOnFailureListener(e -> listener.onError(e.getMessage()));
     }
 
+    public void agregarProveedor(Proveedor proveedor, OnSuccessListener listener) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("nombre", proveedor.getNombreProveedor());
+        data.put("telefono", proveedor.getTelefono());
+        data.put("email", proveedor.getEmail());
+        data.put("direccion", proveedor.getDireccion());
+        data.put("ciudad", proveedor.getCiudad());
+        data.put("pais", proveedor.getPais());
+        data.put("timestamp", System.currentTimeMillis());
+
+        db.collection("proveedores")
+                .add(data)
+                .addOnSuccessListener(documentReference -> listener.onSuccess())
+                .addOnFailureListener(e -> listener.onError(e.getMessage()));
+    }
+
     // ==================== INTERFACES ====================
 
     public interface OnSuccessListener {
         void onSuccess();
+
         void onError(String error);
     }
 }

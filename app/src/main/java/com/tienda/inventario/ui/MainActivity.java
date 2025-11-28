@@ -14,11 +14,10 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.google.firebase.firestore.FirebaseFirestore;
 import com.tienda.inventario.R;
-import com.tienda.inventario.database.FirestoreManager;
 import com.tienda.inventario.database.entities.Producto;
 import com.tienda.inventario.databinding.ActivityMainBinding;
+import com.tienda.inventario.ui.adapter.FirestoreManager;
 import com.tienda.inventario.ui.adapter.FormProductoActivity;
 import com.tienda.inventario.ui.adapter.ProductoAdapter;
 import com.tienda.inventario.viewmodel.ProductoViewModel;
