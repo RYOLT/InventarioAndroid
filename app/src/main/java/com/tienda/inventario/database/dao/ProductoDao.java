@@ -70,5 +70,7 @@ public interface ProductoDao {
     @Query("SELECT * FROM productos WHERE id_proveedor = :idProveedor AND activo = 1")
     LiveData<List<Producto>> getProductosByProveedor(int idProveedor);
 
-
+    // Eliminar todos los productos (para testing y sincronización)
+    @Query("DELETE FROM productos")
+    void deleteAll();
 }
