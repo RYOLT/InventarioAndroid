@@ -1,8 +1,4 @@
 package com.tienda.inventario.viewmodel;
-/*
-public class ProductoViewModel {
-}
-*/
 
 
 import android.app.Application;

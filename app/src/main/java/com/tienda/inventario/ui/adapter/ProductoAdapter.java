@@ -16,10 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-import java.util.HashMap;
-import java.util.Map;
-
-import android.widget.Toast;
 public class ProductoAdapter extends RecyclerView.Adapter<ProductoAdapter.ProductoViewHolder> {
 
     private List<Producto> productos = new ArrayList<>();
@@ -89,22 +85,6 @@ public class ProductoAdapter extends RecyclerView.Adapter<ProductoAdapter.Produc
             tvCodigoBarras = itemView.findViewById(R.id.tvCodigoBarras);
         }
 
-        private void actualizarProducto(String documentId) {
-            Map<String, Object> updates = new HashMap<>();
-            updates.put("nombre", "Nuevo nombre");
-            updates.put("stock", 50);
-
-            db.collection("productos")
-                    .document(documentId)
-                    .update(updates)
-                    .addOnSuccessListener(aVoid -> {
-                        Toast.makeText(holder.itemView.getContext(), "Producto actualizado", Toast.LENGTH_SHORT).show();
-                    })
-                    .addOnFailureListener(e -> {
-                        Toast.makeText(holder.itemView.getContext(), "Error al actualizar", Toast.LENGTH_SHORT).show();
-                    });
-        }
-
         public void bind(final Producto producto) {
             tvNombreProducto.setText(producto.getNombreProducto());
             tvPrecio.setText(String.format(Locale.getDefault(), "$%.2f", producto.getPrecioUnitario()));
@@ -112,8 +92,7 @@ public class ProductoAdapter extends RecyclerView.Adapter<ProductoAdapter.Produc
             tvStock.setText(String.valueOf(producto.getStockActual()));
             tvStockMinimo.setText(String.format("(Min: %d)", producto.getStockMinimo()));
 
-            // Para categoría y proveedor, necesitarás agregar estos campos en Producto
-            // o usar ProductoWithDetails. Por ahora mostramos IDs:
+            // Para categoría y proveedor, mostramos los IDs
             tvCategoria.setText("Categoría: " + producto.getIdCategoria());
             tvProveedor.setText("Proveedor: " + producto.getIdProveedor());
 
