@@ -3,6 +3,7 @@ package com.tienda.inventario.database.entities;
 import androidx.room.ColumnInfo;
 import androidx.room.Entity;
 import androidx.room.ForeignKey;
+import androidx.room.Ignore;
 import androidx.room.Index;
 import androidx.room.PrimaryKey;
 
@@ -62,6 +63,10 @@ public class Producto {
     private long ultimaActualizacion;
 
     private boolean activo;
+
+    // Campo para almacenar el ID del documento de Firestore
+    @Ignore
+    private String docId;
 
     // Constructor vacío (requerido por Room y Firestore)
     public Producto() {
@@ -167,6 +172,14 @@ public class Producto {
         this.activo = activo;
     }
 
+    public String getDocId() {
+        return docId;
+    }
+
+    public void setDocId(String docId) {
+        this.docId = docId;
+    }
+
     // Getters/Setters alternativos para Firestore compatibility
     public String getNombre() {
         return nombreProducto;
@@ -205,7 +218,6 @@ public class Producto {
         return stockActual <= stockMinimo;
     }
 
-    // --- Compatibilidad con Firestore (id genérico) ---
     public int getId() {
         return idProducto;
     }
@@ -213,5 +225,4 @@ public class Producto {
     public void setId(int id) {
         this.idProducto = id;
     }
-
 }

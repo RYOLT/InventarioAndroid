@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -15,13 +16,15 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.tienda.inventario.R;
+import com.tienda.inventario.database.AppDatabase;
+import com.tienda.inventario.database.entities.Categoria;
 import com.tienda.inventario.database.entities.Producto;
+import com.tienda.inventario.database.entities.Proveedor;
 import com.tienda.inventario.databinding.ActivityMainBinding;
 import com.tienda.inventario.database.FirestoreManager;
 import com.tienda.inventario.ui.adapter.FormProductoActivity;
 import com.tienda.inventario.ui.adapter.ProductoAdapter;
 import com.tienda.inventario.viewmodel.ProductoViewModel;
-
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,17 +32,21 @@ import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
+    private static final String TAG = "MainActivity";
     private FirestoreManager firestoreManager;
     private ActivityMainBinding binding;
     private ProductoViewModel viewModel;
     private ProductoAdapter adapter;
     private List<Producto> listaProductos = new ArrayList<>();
+    private boolean primeraSync = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+
+        Log.d(TAG, "onCreate iniciado");
 
         // Inicializar Firestore Manager
         firestoreManager = FirestoreManager.getInstance();
@@ -53,14 +60,80 @@ public class MainActivity extends AppCompatActivity {
         // Configurar RecyclerView
         setupRecyclerView();
 
-        // Observar datos desde Room (base de datos local)
-        observeData();
-
         // Configurar listeners
         setupListeners();
 
-        // Cargar productos desde Firestore
-        cargarProductosFirestore();
+        // Primero cargar categorías y proveedores, luego productos
+        cargarDatosIniciales();
+    }
+
+    private void cargarDatosIniciales() {
+        binding.progressBar.setVisibility(View.VISIBLE);
+
+        // Cargar categorías primero
+        firestoreManager.getCategorias(new FirestoreManager.OnCategoriasListener() {
+            @Override
+            public void onSuccess(List<Categoria> categorias) {
+                Log.d(TAG, "Categorías cargadas: " + categorias.size());
+                guardarCategoriasEnRoom(categorias);
+
+                // Luego cargar proveedores
+                firestoreManager.getProveedores(new FirestoreManager.OnProveedoresListener() {
+                    @Override
+                    public void onSuccess(List<Proveedor> proveedores) {
+                        Log.d(TAG, "Proveedores cargados: " + proveedores.size());
+                        guardarProveedoresEnRoom(proveedores);
+
+                        // Finalmente cargar productos
+                        cargarProductosFirestore();
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        Log.e(TAG, "Error al cargar proveedores: " + error);
+                        // Continuar cargando productos aunque fallen proveedores
+                        cargarProductosFirestore();
+                    }
+                });
+            }
+
+            @Override
+            public void onError(String error) {
+                Log.e(TAG, "Error al cargar categorías: " + error);
+                // Continuar cargando productos aunque fallen categorías
+                cargarProductosFirestore();
+            }
+        });
+    }
+
+    private void guardarCategoriasEnRoom(List<Categoria> categorias) {
+        AppDatabase.databaseWriteExecutor.execute(() -> {
+            try {
+                for (Categoria categoria : categorias) {
+                    AppDatabase.getDatabase(MainActivity.this)
+                            .categoriaDao()
+                            .insert(categoria);
+                }
+                Log.d(TAG, "Categorías guardadas en Room");
+            } catch (Exception e) {
+                Log.e(TAG, "Error al guardar categorías en Room: " + e.getMessage());
+            }
+        });
+    }
+
+    private void guardarProveedoresEnRoom(List<Proveedor> proveedores) {
+        AppDatabase.databaseWriteExecutor.execute(() -> {
+            try {
+                for (Proveedor proveedor : proveedores) {
+                    AppDatabase.getDatabase(MainActivity.this)
+                            .proveedorDao()
+                            .insert(proveedor);
+                }
+                Log.d(TAG, "Proveedores guardados en Room");
+            } catch (Exception e) {
+                Log.e(TAG, "Error al guardar proveedores en Room: " + e.getMessage());
+            }
+        });
     }
 
     private void setupRecyclerView() {
@@ -69,7 +142,6 @@ public class MainActivity extends AppCompatActivity {
         binding.recyclerViewProductos.setAdapter(adapter);
         binding.recyclerViewProductos.setHasFixedSize(true);
 
-        // Configurar clicks en productos
         adapter.setOnProductoClickListener(new ProductoAdapter.OnProductoClickListener() {
             @Override
             public void onProductoClick(Producto producto) {
@@ -86,8 +158,12 @@ public class MainActivity extends AppCompatActivity {
     private void observeData() {
         // Observar lista de productos desde Room
         viewModel.getAllProductos().observe(this, productos -> {
-            if (productos != null) {
+            if (productos != null && !productos.isEmpty()) {
+                Log.d(TAG, "Productos observados: " + productos.size());
                 adapter.setProductos(productos);
+                listaProductos = productos;
+            } else {
+                Log.d(TAG, "No hay productos en Room");
             }
         });
 
@@ -104,6 +180,8 @@ public class MainActivity extends AppCompatActivity {
                 binding.tvValorInventario.setText(
                         String.format(Locale.getDefault(), "$%.2f", valor)
                 );
+            } else {
+                binding.tvValorInventario.setText("$0.00");
             }
         });
     }
@@ -122,11 +200,7 @@ public class MainActivity extends AppCompatActivity {
         // Botón mostrar todos
         binding.btnMostrarTodos.setOnClickListener(v -> {
             binding.etBuscar.setText("");
-            viewModel.getAllProductos().observe(this, productos -> {
-                if (productos != null) {
-                    adapter.setProductos(productos);
-                }
-            });
+            observeData();
         });
 
         // Botón stock bajo
@@ -138,7 +212,6 @@ public class MainActivity extends AppCompatActivity {
             startActivity(intent);
         });
 
-
         // Búsqueda en tiempo real
         binding.etBuscar.addTextChangedListener(new TextWatcher() {
             @Override
@@ -149,11 +222,7 @@ public class MainActivity extends AppCompatActivity {
                 if (s.length() > 2) {
                     buscarProductos(s.toString());
                 } else if (s.length() == 0) {
-                    viewModel.getAllProductos().observe(MainActivity.this, productos -> {
-                        if (productos != null) {
-                            adapter.setProductos(productos);
-                        }
-                    });
+                    adapter.setProductos(listaProductos);
                 }
             }
 
@@ -207,7 +276,6 @@ public class MainActivity extends AppCompatActivity {
                     Intent intent = new Intent(MainActivity.this, FormProductoActivity.class);
                     intent.putExtra("PRODUCTO_ID", producto.getIdProducto());
                     startActivity(intent);
-
                 })
                 .show();
     }
@@ -294,13 +362,8 @@ public class MainActivity extends AppCompatActivity {
         int id = item.getItemId();
 
         if (id == R.id.action_refresh) {
-            viewModel.getAllProductos().observe(this, productos -> {
-                if (productos != null) {
-                    adapter.setProductos(productos);
-                }
-            });
             cargarProductosFirestore();
-            Toast.makeText(this, "Lista actualizada", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Sincronizando...", Toast.LENGTH_SHORT).show();
             return true;
         }
 
@@ -313,22 +376,59 @@ public class MainActivity extends AppCompatActivity {
         firestoreManager.getProductos(new FirestoreManager.OnProductosListener() {
             @Override
             public void onSuccess(List<Producto> productos) {
-                binding.progressBar.setVisibility(View.GONE);
+                runOnUiThread(() -> {
+                    binding.progressBar.setVisibility(View.GONE);
 
-                // Guardar productos de Firestore en Room
-                for (Producto producto : productos) {
-                    viewModel.insert(producto);
-                }
+                    if (productos.isEmpty()) {
+                        Toast.makeText(MainActivity.this,
+                                "No hay productos en Firestore",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
 
-                Toast.makeText(MainActivity.this,
-                        "Sincronizado: " + productos.size() + " productos",
-                        Toast.LENGTH_SHORT).show();
+                    Log.d(TAG, "Productos recibidos de Firestore: " + productos.size());
+
+                    // Guardar productos en Room
+                    AppDatabase.databaseWriteExecutor.execute(() -> {
+                        try {
+                            for (Producto producto : productos) {
+                                AppDatabase.getDatabase(MainActivity.this)
+                                        .productoDao()
+                                        .insert(producto);
+                            }
+
+                            runOnUiThread(() -> {
+                                // Iniciar observación después de la primera sincronización
+                                if (primeraSync) {
+                                    observeData();
+                                    primeraSync = false;
+                                }
+
+                                Toast.makeText(MainActivity.this,
+                                        "✅ " + productos.size() + " productos sincronizados",
+                                        Toast.LENGTH_SHORT).show();
+                            });
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error al guardar productos en Room: " + e.getMessage());
+                            runOnUiThread(() -> {
+                                Toast.makeText(MainActivity.this,
+                                        "Error al guardar productos: " + e.getMessage(),
+                                        Toast.LENGTH_LONG).show();
+                            });
+                        }
+                    });
+                });
             }
 
             @Override
             public void onError(String error) {
-                binding.progressBar.setVisibility(View.GONE);
-                Toast.makeText(MainActivity.this, "Error: " + error, Toast.LENGTH_SHORT).show();
+                runOnUiThread(() -> {
+                    binding.progressBar.setVisibility(View.GONE);
+                    Log.e(TAG, "Error al cargar productos: " + error);
+                    Toast.makeText(MainActivity.this,
+                            "Error: " + error,
+                            Toast.LENGTH_LONG).show();
+                });
             }
         });
     }
@@ -336,11 +436,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Recargar productos cuando volvemos a la actividad
-        viewModel.getAllProductos().observe(this, productos -> {
-            if (productos != null) {
-                adapter.setProductos(productos);
-            }
-        });
+        // Solo observar datos si ya se hizo la primera sincronización
+        if (!primeraSync) {
+            observeData();
+        }
     }
 }
