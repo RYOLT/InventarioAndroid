@@ -2,6 +2,8 @@ package com.tienda.inventario.ui;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
@@ -39,6 +41,8 @@ public class MainActivity extends AppCompatActivity {
     private ProductoAdapter adapter;
     private List<Producto> listaProductos = new ArrayList<>();
     private boolean primeraSync = true;
+    private Handler searchHandler = new Handler(Looper.getMainLooper());
+    private Runnable searchRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,22 +52,12 @@ public class MainActivity extends AppCompatActivity {
 
         Log.d(TAG, "onCreate iniciado");
 
-        // Inicializar Firestore Manager
         firestoreManager = FirestoreManager.getInstance();
-
-        // Configurar Toolbar
         setSupportActionBar(binding.toolbar);
-
-        // Inicializar ViewModel
         viewModel = new ViewModelProvider(this).get(ProductoViewModel.class);
 
-        // Configurar RecyclerView
         setupRecyclerView();
-
-        // Configurar listeners
         setupListeners();
-
-        // Primero cargar categorías y proveedores, luego productos
         cargarDatosIniciales();
     }
 
@@ -83,15 +77,12 @@ public class MainActivity extends AppCompatActivity {
                     public void onSuccess(List<Proveedor> proveedores) {
                         Log.d(TAG, "Proveedores cargados: " + proveedores.size());
                         guardarProveedoresEnRoom(proveedores);
-
-                        // Finalmente cargar productos
                         cargarProductosFirestore();
                     }
 
                     @Override
                     public void onError(String error) {
                         Log.e(TAG, "Error al cargar proveedores: " + error);
-                        // Continuar cargando productos aunque fallen proveedores
                         cargarProductosFirestore();
                     }
                 });
@@ -100,7 +91,6 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onError(String error) {
                 Log.e(TAG, "Error al cargar categorías: " + error);
-                // Continuar cargando productos aunque fallen categorías
                 cargarProductosFirestore();
             }
         });
@@ -109,12 +99,19 @@ public class MainActivity extends AppCompatActivity {
     private void guardarCategoriasEnRoom(List<Categoria> categorias) {
         AppDatabase.databaseWriteExecutor.execute(() -> {
             try {
-                for (Categoria categoria : categorias) {
-                    AppDatabase.getDatabase(MainActivity.this)
-                            .categoriaDao()
-                            .insert(categoria);
+                AppDatabase db = AppDatabase.getDatabase(MainActivity.this);
+
+                // Verificar si ya existen categorías antes de insertar
+                List<Categoria> categoriasExistentes = db.categoriaDao().getAllCategoriasList();
+
+                if (categoriasExistentes.isEmpty()) {
+                    for (Categoria categoria : categorias) {
+                        db.categoriaDao().insert(categoria);
+                    }
+                    Log.d(TAG, "Categorías guardadas en Room");
+                } else {
+                    Log.d(TAG, "Categorías ya existen en Room, no se insertan");
                 }
-                Log.d(TAG, "Categorías guardadas en Room");
             } catch (Exception e) {
                 Log.e(TAG, "Error al guardar categorías en Room: " + e.getMessage());
             }
@@ -124,12 +121,19 @@ public class MainActivity extends AppCompatActivity {
     private void guardarProveedoresEnRoom(List<Proveedor> proveedores) {
         AppDatabase.databaseWriteExecutor.execute(() -> {
             try {
-                for (Proveedor proveedor : proveedores) {
-                    AppDatabase.getDatabase(MainActivity.this)
-                            .proveedorDao()
-                            .insert(proveedor);
+                AppDatabase db = AppDatabase.getDatabase(MainActivity.this);
+
+                // Verificar si ya existen proveedores antes de insertar
+                List<Proveedor> proveedoresExistentes = db.proveedorDao().getAllProveedoresList();
+
+                if (proveedoresExistentes.isEmpty()) {
+                    for (Proveedor proveedor : proveedores) {
+                        db.proveedorDao().insert(proveedor);
+                    }
+                    Log.d(TAG, "Proveedores guardados en Room");
+                } else {
+                    Log.d(TAG, "Proveedores ya existen en Room, no se insertan");
                 }
-                Log.d(TAG, "Proveedores guardados en Room");
             } catch (Exception e) {
                 Log.e(TAG, "Error al guardar proveedores en Room: " + e.getMessage());
             }
@@ -156,7 +160,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void observeData() {
-        // Observar lista de productos desde Room
         viewModel.getAllProductos().observe(this, productos -> {
             if (productos != null && !productos.isEmpty()) {
                 Log.d(TAG, "Productos observados: " + productos.size());
@@ -164,17 +167,16 @@ public class MainActivity extends AppCompatActivity {
                 listaProductos = productos;
             } else {
                 Log.d(TAG, "No hay productos en Room");
+                adapter.setProductos(new ArrayList<>());
             }
         });
 
-        // Observar total de productos
         viewModel.countProductosActivos().observe(this, count -> {
             if (count != null) {
                 binding.tvTotalProductos.setText(String.valueOf(count));
             }
         });
 
-        // Observar valor total del inventario
         viewModel.getValorTotalInventario().observe(this, valor -> {
             if (valor != null) {
                 binding.tvValorInventario.setText(
@@ -200,7 +202,7 @@ public class MainActivity extends AppCompatActivity {
         // Botón mostrar todos
         binding.btnMostrarTodos.setOnClickListener(v -> {
             binding.etBuscar.setText("");
-            observeData();
+            adapter.setProductos(listaProductos);
         });
 
         // Botón stock bajo
@@ -212,18 +214,28 @@ public class MainActivity extends AppCompatActivity {
             startActivity(intent);
         });
 
-        // Búsqueda en tiempo real
+        // Búsqueda en tiempo real - CORREGIDO para evitar múltiples toasts
         binding.etBuscar.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
 
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                if (s.length() > 2) {
-                    buscarProductos(s.toString());
-                } else if (s.length() == 0) {
-                    adapter.setProductos(listaProductos);
+                // Cancelar búsqueda anterior
+                if (searchRunnable != null) {
+                    searchHandler.removeCallbacks(searchRunnable);
                 }
+
+                // Programar nueva búsqueda con delay
+                searchRunnable = () -> {
+                    if (s.length() > 2) {
+                        buscarProductosSilent(s.toString());
+                    } else if (s.length() == 0) {
+                        adapter.setProductos(listaProductos);
+                    }
+                };
+
+                searchHandler.postDelayed(searchRunnable, 300); // 300ms de delay
             }
 
             @Override
@@ -238,6 +250,15 @@ public class MainActivity extends AppCompatActivity {
                 if (productos.isEmpty()) {
                     Toast.makeText(this, "No se encontraron productos", Toast.LENGTH_SHORT).show();
                 }
+            }
+        });
+    }
+
+    // Búsqueda sin toast para búsqueda en tiempo real
+    private void buscarProductosSilent(String termino) {
+        viewModel.searchByName(termino).observe(this, productos -> {
+            if (productos != null) {
+                adapter.setProductos(productos);
             }
         });
     }
@@ -275,6 +296,7 @@ public class MainActivity extends AppCompatActivity {
                 .setNeutralButton("Editar", (dialog, which) -> {
                     Intent intent = new Intent(MainActivity.this, FormProductoActivity.class);
                     intent.putExtra("PRODUCTO_ID", producto.getIdProducto());
+                    intent.putExtra("DOC_ID", producto.getDocId());
                     startActivity(intent);
                 })
                 .show();
@@ -293,6 +315,7 @@ public class MainActivity extends AppCompatActivity {
                         case 1:
                             Intent intent = new Intent(MainActivity.this, FormProductoActivity.class);
                             intent.putExtra("PRODUCTO_ID", producto.getIdProducto());
+                            intent.putExtra("DOC_ID", producto.getDocId());
                             startActivity(intent);
                             break;
                         case 2:
@@ -344,8 +367,34 @@ public class MainActivity extends AppCompatActivity {
                 .setTitle("Confirmar eliminación")
                 .setMessage("¿Está seguro de eliminar '" + producto.getNombreProducto() + "'?")
                 .setPositiveButton("Eliminar", (dialog, which) -> {
-                    viewModel.delete(producto.getIdProducto());
-                    Toast.makeText(this, "Producto eliminado", Toast.LENGTH_SHORT).show();
+                    // Eliminar de Firestore primero
+                    if (producto.getDocId() != null && !producto.getDocId().isEmpty()) {
+                        firestoreManager.eliminarProducto(producto.getDocId(),
+                                new FirestoreManager.OnSuccessListener() {
+                                    @Override
+                                    public void onSuccess() {
+                                        // Luego eliminar de Room
+                                        viewModel.delete(producto.getIdProducto());
+                                        runOnUiThread(() -> {
+                                            Toast.makeText(MainActivity.this,
+                                                    "Producto eliminado", Toast.LENGTH_SHORT).show();
+                                        });
+                                    }
+
+                                    @Override
+                                    public void onError(String error) {
+                                        runOnUiThread(() -> {
+                                            Toast.makeText(MainActivity.this,
+                                                    "Error al eliminar: " + error,
+                                                    Toast.LENGTH_SHORT).show();
+                                        });
+                                    }
+                                });
+                    } else {
+                        // Si no tiene docId, solo eliminar de Room
+                        viewModel.delete(producto.getIdProducto());
+                        Toast.makeText(this, "Producto eliminado", Toast.LENGTH_SHORT).show();
+                    }
                 })
                 .setNegativeButton("Cancelar", null)
                 .show();
@@ -362,12 +411,26 @@ public class MainActivity extends AppCompatActivity {
         int id = item.getItemId();
 
         if (id == R.id.action_refresh) {
-            cargarProductosFirestore();
-            Toast.makeText(this, "Sincronizando...", Toast.LENGTH_SHORT).show();
+            sincronizarConFirestore();
             return true;
         }
 
         return super.onOptionsItemSelected(item);
+    }
+
+    private void sincronizarConFirestore() {
+        Toast.makeText(this, "Sincronizando...", Toast.LENGTH_SHORT).show();
+        binding.progressBar.setVisibility(View.VISIBLE);
+
+        // Limpiar base de datos local antes de sincronizar
+        AppDatabase.databaseWriteExecutor.execute(() -> {
+            AppDatabase db = AppDatabase.getDatabase(MainActivity.this);
+            db.productoDao().deleteAll();
+
+            runOnUiThread(() -> {
+                cargarProductosFirestore();
+            });
+        });
     }
 
     private void cargarProductosFirestore() {
@@ -383,6 +446,10 @@ public class MainActivity extends AppCompatActivity {
                         Toast.makeText(MainActivity.this,
                                 "No hay productos en Firestore",
                                 Toast.LENGTH_LONG).show();
+                        if (primeraSync) {
+                            observeData();
+                            primeraSync = false;
+                        }
                         return;
                     }
 
@@ -391,14 +458,12 @@ public class MainActivity extends AppCompatActivity {
                     // Guardar productos en Room
                     AppDatabase.databaseWriteExecutor.execute(() -> {
                         try {
+                            AppDatabase db = AppDatabase.getDatabase(MainActivity.this);
                             for (Producto producto : productos) {
-                                AppDatabase.getDatabase(MainActivity.this)
-                                        .productoDao()
-                                        .insert(producto);
+                                db.productoDao().insert(producto);
                             }
 
                             runOnUiThread(() -> {
-                                // Iniciar observación después de la primera sincronización
                                 if (primeraSync) {
                                     observeData();
                                     primeraSync = false;
@@ -428,6 +493,11 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(MainActivity.this,
                             "Error: " + error,
                             Toast.LENGTH_LONG).show();
+
+                    if (primeraSync) {
+                        observeData();
+                        primeraSync = false;
+                    }
                 });
             }
         });
@@ -436,9 +506,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Solo observar datos si ya se hizo la primera sincronización
         if (!primeraSync) {
             observeData();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (searchHandler != null && searchRunnable != null) {
+            searchHandler.removeCallbacks(searchRunnable);
         }
     }
 }

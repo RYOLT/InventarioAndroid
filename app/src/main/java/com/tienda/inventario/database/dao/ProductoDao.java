@@ -69,4 +69,6 @@ public interface ProductoDao {
     // Obtener productos por proveedor
     @Query("SELECT * FROM productos WHERE id_proveedor = :idProveedor AND activo = 1")
     LiveData<List<Producto>> getProductosByProveedor(int idProveedor);
+
+
 }

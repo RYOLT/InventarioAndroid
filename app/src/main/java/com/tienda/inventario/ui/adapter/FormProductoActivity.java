@@ -26,6 +26,7 @@ public class FormProductoActivity extends AppCompatActivity {
     private int categoriaSeleccionadaId = -1;
     private int proveedorSeleccionadoId = -1;
     private int productoId = -1;
+    private String documentoId = null;
     private boolean esEdicion = false;
 
     @Override
@@ -43,6 +44,7 @@ public class FormProductoActivity extends AppCompatActivity {
 
         if (getIntent().hasExtra("PRODUCTO_ID")) {
             productoId = getIntent().getIntExtra("PRODUCTO_ID", -1);
+            documentoId = getIntent().getStringExtra("DOC_ID");
             esEdicion = true;
             if (getSupportActionBar() != null) {
                 getSupportActionBar().setTitle("Editar Producto");
@@ -202,37 +204,68 @@ public class FormProductoActivity extends AppCompatActivity {
         producto.setIdCategoria(categoriaSeleccionadaId);
         producto.setIdProveedor(proveedorSeleccionadoId);
 
-        firestoreManager.agregarProducto(producto, new FirestoreManager.OnSuccessListener() {
-            @Override
-            public void onSuccess() {
-                AppDatabase.databaseWriteExecutor.execute(() -> {
-                    if (esEdicion) {
-                        producto.setIdProducto(productoId);
-                        AppDatabase.getDatabase(FormProductoActivity.this)
-                                .productoDao()
-                                .update(producto);
-                    } else {
+        if (esEdicion && documentoId != null) {
+            // Actualizar en Firestore
+            firestoreManager.actualizarProducto(documentoId, producto,
+                    new FirestoreManager.OnSuccessListener() {
+                        @Override
+                        public void onSuccess() {
+                            // Actualizar en Room
+                            AppDatabase.databaseWriteExecutor.execute(() -> {
+                                producto.setIdProducto(productoId);
+                                producto.setDocId(documentoId);
+                                AppDatabase.getDatabase(FormProductoActivity.this)
+                                        .productoDao()
+                                        .update(producto);
+                            });
+
+                            runOnUiThread(() -> {
+                                Toast.makeText(FormProductoActivity.this,
+                                        "Producto actualizado",
+                                        Toast.LENGTH_SHORT).show();
+                                finish();
+                            });
+                        }
+
+                        @Override
+                        public void onError(String error) {
+                            runOnUiThread(() -> {
+                                Toast.makeText(FormProductoActivity.this,
+                                        "Error al actualizar: " + error,
+                                        Toast.LENGTH_SHORT).show();
+                            });
+                        }
+                    });
+        } else {
+            // Agregar nuevo en Firestore
+            firestoreManager.agregarProducto(producto, new FirestoreManager.OnSuccessListener() {
+                @Override
+                public void onSuccess() {
+                    // Agregar en Room
+                    AppDatabase.databaseWriteExecutor.execute(() -> {
                         AppDatabase.getDatabase(FormProductoActivity.this)
                                 .productoDao()
                                 .insert(producto);
-                    }
-                });
+                    });
 
-                runOnUiThread(() -> {
-                    Toast.makeText(FormProductoActivity.this,
-                            esEdicion ? "Producto actualizado" : "Producto guardado",
-                            Toast.LENGTH_SHORT).show();
-                    finish();
-                });
-            }
+                    runOnUiThread(() -> {
+                        Toast.makeText(FormProductoActivity.this,
+                                "Producto guardado",
+                                Toast.LENGTH_SHORT).show();
+                        finish();
+                    });
+                }
 
-            @Override
-            public void onError(String error) {
-                Toast.makeText(FormProductoActivity.this,
-                        "Error al guardar: " + error,
-                        Toast.LENGTH_SHORT).show();
-            }
-        });
+                @Override
+                public void onError(String error) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(FormProductoActivity.this,
+                                "Error al guardar: " + error,
+                                Toast.LENGTH_SHORT).show();
+                    });
+                }
+            });
+        }
     }
 
     private boolean validarCampos() {
