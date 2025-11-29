@@ -213,7 +213,7 @@ public class Producto {
         this.stockMinimo = stockMin;
     }
 
-    // Método útil para verificar stock bajo
+    // Metodo útil para verificar stock bajo
     public boolean isBajoStock() {
         return stockActual <= stockMinimo;
     }
